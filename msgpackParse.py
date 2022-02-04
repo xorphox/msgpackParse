@@ -1,5 +1,6 @@
 import tkinter as tk
 import binascii
+import struct
 
 class Names:
     str16 = ['Str16', 'Bin16']
@@ -23,35 +24,48 @@ class parser:
             return ''
         return '  '*self.indent
 
-    def getInt8(self):
+    def isIntSigned(self):
+        if self.curCh() >= 0xd0:
+            return True
+        return False
+        
+    def getInt8(self, signed=False):
         ret = self.curCh()
         self.idx += 1
         if self.isTrunc():
             return None
         return ret
         
-    def getInt16(self):
+    def getInt16(self, signed=False):
         start = self.idx
         self.idx += 2
         if self.isTrunc():
             return None
-        ret = int.from_bytes(self.inStr[start:self.idx], "big")
+        ret = int.from_bytes(self.inStr[start:self.idx], "big", signed=signed)
         return ret
     
-    def getInt32(self):
+    def getInt32(self, signed=False):
         start = self.idx
         self.idx += 4
         if self.isTrunc():
             return None
-        ret = int.from_bytes(self.inStr[start:self.idx], "big")
+        ret = int.from_bytes(self.inStr[start:self.idx], "big", signed=signed)
         return ret
 
-    def getInt64(self):
+    def getInt64(self, signed=False):
         start = self.idx
         self.idx += 8
         if self.isTrunc():
             return None
-        ret = int.from_bytes(self.inStr[start:self.idx], "big")
+        ret = int.from_bytes(self.inStr[start:self.idx], "big", signed=signed)
+        return ret
+
+    def getFloat64(self):
+        start = self.idx
+        self.idx += 8
+        if self.isTrunc():
+            return None
+        ret = struct.unpack('d', self.inStr[start:self.idx])
         return ret
 
     def processMap(self, outBox, count):
@@ -87,6 +101,25 @@ class parser:
             self.indentBypass = True
             self.process(outBox)
         self.indent -= 1
+
+    def xFixstr(self, outBox):
+        name = 'Fixstr'
+        count = self.curCh() - 0xa0
+        self.idx += 1
+        if count is None or (count != 0 and self.isEnd()):
+            outBox.insert(tk.END, self.getIndent() + '{0}8 Truncated\n'.format(name))
+            return
+        start = self.idx
+        if count == 0:
+            T = 'Invalid'
+        else:
+            start += 1
+            T = self.curCh()
+        self.idx += count
+        if self.isTrunc():
+            outBox.insert(tk.END, self.getIndent() + '{0}8 Truncated Text\n'.format(name))
+            return
+        outBox.insert(tk.END, self.getIndent() + '{0}8({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8').replace('\x00', '\x01')))
         
     def xInv(self, outBox):
         outBox.insert(tk.END, self.getIndent() + f"Invalid {self.curCh():#0{4}x}\n")
@@ -143,20 +176,39 @@ class parser:
         outBox.insert(tk.END, self.getIndent() + '{0}16({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8').replace('\x00', '\x01')))
 
     def xInt64(self, outBox):
+        signed = self.isIntSigned()
         self.idx += 1
-        val = self.getInt64()
+        val = self.getInt64(signed)
         if val is None:
             outBox.insert(tk.END, self.getIndent() + 'Int64 Truncated\n')
             return
         outBox.insert(tk.END, self.getIndent() + 'Int64 {0} 0x{1:x}\n'.format(val, val))
+
+    def xFloat64(self, outBox):
+        self.idx += 1
+        val = self.getFloat64()
+        if val is None:
+            outBox.insert(tk.END, self.getIndent() + 'Float64 Truncated\n')
+            return
+        outBox.insert(tk.END, self.getIndent() + 'Float64 {0}\n'.format(val))
         
     def xInt32(self, outBox):
+        signed = self.isIntSigned()
         self.idx += 1
-        val = self.getInt32()
+        val = self.getInt32(signed)
         if val is None:
             outBox.insert(tk.END, self.getIndent() + 'Int32 Truncated\n')
             return
         outBox.insert(tk.END, self.getIndent() + 'Int32 {0} 0x{1:x}\n'.format(val, val))
+
+    def xInt16(self, outBox):
+        signed = self.isIntSigned()
+        self.idx += 1
+        val = self.getInt16(signed)
+        if val is None:
+            outBox.insert(tk.END, self.getIndent() + 'Int16 Truncated\n')
+            return
+        outBox.insert(tk.END, self.getIndent() + 'Int16 {0} 0x{1:x}\n'.format(val, val))
         
     def xMap16(self, outBox):
         self.idx += 1
@@ -192,13 +244,17 @@ class parser:
         self.table[0x00:0x80] = [self.xPfixint]*0x80
         self.table[0x80:0x90] = [self.xFixmap]*0x10
         self.table[0x90:0xa0] = [self.xFixarray]*0x10
+        self.table[0xa0:0xc0] = [self.xFixstr]*0x20
         self.table[0xc0] = self.xNil
         self.table[0xc1] = self.xFalse
         self.table[0xc2] = self.xTrue
         self.table[0xc5] = self.xStr16
         self.table[0xc7] = self.xExt8
+        self.table[0xcb] = self.xFloat64
+        self.table[0xcd] = self.xInt16
         self.table[0xce] = self.xInt32
         self.table[0xcf] = self.xInt64
+        self.table[0xd1] = self.xInt16
         self.table[0xd2] = self.xInt32
         self.table[0xd3] = self.xInt64
         self.table[0xd9] = self.xStr8
