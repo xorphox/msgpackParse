@@ -65,7 +65,7 @@ class parser:
         self.idx += 8
         if self.isTrunc():
             return None
-        ret = struct.unpack('d', self.inStr[start:self.idx])
+        ret = struct.unpack('d', self.inStr[start:self.idx])[0]
         return ret
 
     def processMap(self, outBox, count):
@@ -190,7 +190,7 @@ class parser:
         if val is None:
             outBox.insert(tk.END, self.getIndent() + 'Float64 Truncated\n')
             return
-        outBox.insert(tk.END, self.getIndent() + 'Float64 {0}\n'.format(val))
+        outBox.insert(tk.END, self.getIndent() + 'Float64 {}\n'.format(val))
         
     def xInt32(self, outBox):
         signed = self.isIntSigned()
@@ -209,7 +209,16 @@ class parser:
             outBox.insert(tk.END, self.getIndent() + 'Int16 Truncated\n')
             return
         outBox.insert(tk.END, self.getIndent() + 'Int16 {0} 0x{1:x}\n'.format(val, val))
-        
+
+    def xInt8(self, outBox):
+        signed = self.isIntSigned()
+        self.idx += 1
+        val = self.getInt8(signed)
+        if val is None:
+            outBox.insert(tk.END, self.getIndent() + 'Int8 Truncated\n')
+            return
+        outBox.insert(tk.END, self.getIndent() + 'Int8 {0} 0x{1:x}\n'.format(val, val))
+    
     def xMap16(self, outBox):
         self.idx += 1
         count = self.getInt16()
@@ -251,9 +260,11 @@ class parser:
         self.table[0xc5] = self.xStr16
         self.table[0xc7] = self.xExt8
         self.table[0xcb] = self.xFloat64
+        self.table[0xcc] = self.xInt8
         self.table[0xcd] = self.xInt16
         self.table[0xce] = self.xInt32
         self.table[0xcf] = self.xInt64
+        self.table[0xd0] = self.xInt8
         self.table[0xd1] = self.xInt16
         self.table[0xd2] = self.xInt32
         self.table[0xd3] = self.xInt64
