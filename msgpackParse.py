@@ -3,10 +3,10 @@ import binascii
 import struct
 
 class Names:
-    str16 = ['Str16', 'Bin16']
+    str = ['Bin', 'Str']
 
-    def getStr16(x):
-        return Names.str16[x & 1]
+    def getStr(x):
+        return Names.str[(x >> 4) & 1]
 
 class parser:
     def curCh(self):
@@ -68,6 +68,17 @@ class parser:
         ret = struct.unpack('d', self.inStr[start:self.idx])[0]
         return ret
 
+    def processList(self, outBox, count):
+        outBox.insert(tk.END, self.getIndent() + 'List({0})\n'.format(count))
+        self.indent += 1
+        for x in range(count):
+            if self.isEnd():
+                return
+            outBox.insert(tk.END, self.getIndent() + '[{0}] '.format(x))
+            self.indentBypass = True
+            self.process(outBox)
+        self.indent -= 1
+
     def processMap(self, outBox, count):
         outBox.insert(tk.END, self.getIndent() + 'Map({0})\n'.format(count))
         self.indent += 1
@@ -107,7 +118,7 @@ class parser:
         count = self.curCh() - 0xa0
         self.idx += 1
         if count is None or (count != 0 and self.isEnd()):
-            outBox.insert(tk.END, self.getIndent() + '{0}8 Truncated\n'.format(name))
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format(name))
             return
         start = self.idx
         if count == 0:
@@ -117,9 +128,9 @@ class parser:
             T = self.curCh()
         self.idx += count
         if self.isTrunc():
-            outBox.insert(tk.END, self.getIndent() + '{0}8 Truncated Text\n'.format(name))
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated Text\n'.format(name))
             return
-        outBox.insert(tk.END, self.getIndent() + '{0}8({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8').replace('\x00', '\x01')))
+        outBox.insert(tk.END, self.getIndent() + '{0}({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8','ignore').replace('\x00', '\x01')))
         
     def xInv(self, outBox):
         outBox.insert(tk.END, self.getIndent() + f"Invalid {self.curCh():#0{4}x}\n")
@@ -138,7 +149,7 @@ class parser:
         self.idx += 1
         
     def xStr8(self, outBox):
-        name = Names.getStr16(self.curCh())
+        name = Names.getStr(self.curCh())
         self.idx += 1
         count = self.getInt8()
         if count is None or (count != 0 and self.isEnd()):
@@ -154,10 +165,10 @@ class parser:
         if self.isTrunc():
             outBox.insert(tk.END, self.getIndent() + '{0}8 Truncated Text\n'.format(name))
             return
-        outBox.insert(tk.END, self.getIndent() + '{0}8({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8').replace('\x00', '\x01')))
+        outBox.insert(tk.END, self.getIndent() + '{0}8({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8','ignore').replace('\x00', '\x01')))
 
     def xStr16(self, outBox):
-        name = Names.getStr16(self.curCh())
+        name = Names.getStr(self.curCh())
         self.idx += 1
         count = self.getInt16()
         if count is None or (count != 0 and self.isEnd()):
@@ -173,7 +184,7 @@ class parser:
         if self.isTrunc():
             outBox.insert(tk.END, self.getIndent() + '{0}16 Truncated Text\n'.format(name))
             return
-        outBox.insert(tk.END, self.getIndent() + '{0}16({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8').replace('\x00', '\x01')))
+        outBox.insert(tk.END, self.getIndent() + '{0}16({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8','ignore').replace('\x00', '\x01')))
 
     def xInt64(self, outBox):
         signed = self.isIntSigned()
@@ -218,6 +229,14 @@ class parser:
             outBox.insert(tk.END, self.getIndent() + 'Int8 Truncated\n')
             return
         outBox.insert(tk.END, self.getIndent() + 'Int8 {0} 0x{1:x}\n'.format(val, val))
+
+    def xList16(self, outBox):
+        self.idx += 1
+        count = self.getInt16()
+        if count is None or (count != 0 and self.isEnd()):
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('List'))
+            return
+        self.processList(outBox, count)
     
     def xMap16(self, outBox):
         self.idx += 1
@@ -255,8 +274,8 @@ class parser:
         self.table[0x90:0xa0] = [self.xFixarray]*0x10
         self.table[0xa0:0xc0] = [self.xFixstr]*0x20
         self.table[0xc0] = self.xNil
-        self.table[0xc1] = self.xFalse
-        self.table[0xc2] = self.xTrue
+        self.table[0xc2] = self.xFalse
+        self.table[0xc3] = self.xTrue
         self.table[0xc5] = self.xStr16
         self.table[0xc7] = self.xExt8
         self.table[0xcb] = self.xFloat64
@@ -270,6 +289,7 @@ class parser:
         self.table[0xd3] = self.xInt64
         self.table[0xd9] = self.xStr8
         self.table[0xda] = self.xStr16
+        self.table[0xdc] = self.xList16
         self.table[0xde] = self.xMap16
         
     def process(self, outBox):
@@ -282,6 +302,7 @@ class parser:
         if not self.isEnd():
             self.process(outBox)
         if not self.isEnd():
+            outBox.insert(tk.END, self.getIndent() + '@idx({} 0x{:X})\n'.format(self.idx, self.idx))
             outBox.insert(tk.END, self.getIndent() + 'Padding({0}) 0x{1}\n'.format(len(self.inStr) - self.idx, self.inStr[self.idx:].hex()))
         outBox['state'] = 'disabled'
         
