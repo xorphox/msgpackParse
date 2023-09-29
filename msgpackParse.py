@@ -91,9 +91,14 @@ class parser:
         self.indent -= 1
 
     def xPfixint(self, outBox):
-        val = self.inStr[self.idx]
+        val = self.curCh()
         self.idx += 1
         outBox.insert(tk.END, self.getIndent() + 'Int0 {0}\n'.format(val))
+
+    def xNfixint(self, outBox):
+        val = int.from_bytes(self.inStr[self.idx:self.idx+1], 'big', signed="True")
+        self.idx += 1
+        outBox.insert(tk.END, self.getIndent() + 'NegInt0 {0}\n'.format(val))
 
     def xFixmap(self, outBox):
         count = self.curCh() - 0x80
@@ -186,6 +191,25 @@ class parser:
             return
         outBox.insert(tk.END, self.getIndent() + '{0}16({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8','ignore').replace('\x00', '\x01')))
 
+    def xStr32(self, outBox):
+        name = Names.getStr(self.curCh())
+        self.idx += 1
+        count = self.getInt32()
+        if count is None or (count != 0 and self.isEnd()):
+            outBox.insert(tk.END, self.getIndent() + '{0}32 Truncated\n'.format(name))
+            return
+        start = self.idx
+        if count == 0:
+            T = 'Invalid'
+        else:
+            start += 1
+            T = self.curCh()
+        self.idx += count
+        if self.isTrunc():
+            outBox.insert(tk.END, self.getIndent() + '{0}32({1}) Truncated Text\n'.format(name, count))
+            return
+        outBox.insert(tk.END, self.getIndent() + '{0}32({1}) type {2} "{3}"\n'.format(name, count, T, self.inStr[start:self.idx].decode('utf-8','ignore').replace('\x00', '\x01')))
+
     def xInt64(self, outBox):
         signed = self.isIntSigned()
         self.idx += 1
@@ -234,15 +258,31 @@ class parser:
         self.idx += 1
         count = self.getInt16()
         if count is None or (count != 0 and self.isEnd()):
-            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('List'))
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('List16'))
             return
         self.processList(outBox, count)
-    
+
+    def xList32(self, outBox):
+        self.idx += 1
+        count = self.getInt32()
+        if count is None or (count != 0 and self.isEnd()):
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('List32'))
+            return
+        self.processList(outBox, count)
+
     def xMap16(self, outBox):
         self.idx += 1
         count = self.getInt16()
         if count is None or (count != 0 and self.isEnd()):
-            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('Map'))
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('Map16'))
+            return
+        self.processMap(outBox, count)
+
+    def xMap32(self, outBox):
+        self.idx += 1
+        count = self.getInt32()
+        if count is None or (count != 0 and self.isEnd()):
+            outBox.insert(tk.END, self.getIndent() + '{0} Truncated\n'.format('Map32'))
             return
         self.processMap(outBox, count)
 
@@ -289,8 +329,12 @@ class parser:
         self.table[0xd3] = self.xInt64
         self.table[0xd9] = self.xStr8
         self.table[0xda] = self.xStr16
+        self.table[0xdb] = self.xStr32
         self.table[0xdc] = self.xList16
+        self.table[0xdd] = self.xList32
         self.table[0xde] = self.xMap16
+        self.table[0xdf] = self.xMap32
+        self.table[0xe0:0x100] = [self.xNfixint]*(0x100 - 0xe0)
         
     def process(self, outBox):
         x = self.inStr[self.idx]
