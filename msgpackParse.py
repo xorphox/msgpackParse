@@ -1,3 +1,4 @@
+import sys
 import tkinter as tk
 import binascii
 import struct
@@ -392,4 +393,13 @@ rf.pack(side=tk.RIGHT, fill=tk.BOTH, expand=tk.YES)
 
 #loop
 #top.pack()
-top.mainloop()
+
+if len(sys.argv) == 1:
+    top.mainloop()
+else:
+    data = sys.argv[1]
+    y = bytes.fromhex(data)
+    p = parser(y)
+    p.doStart(outbox)
+    
+    print(outbox.get("1.0", "end"))
