@@ -60,6 +60,14 @@ class parser:
             return None
         ret = int.from_bytes(self.inStr[start:self.idx], "big", signed=signed)
         return ret
+    
+    def getFloat32(self):
+        start = self.idx
+        self.idx += 4
+        if self.isTrunc():
+            return None
+        ret = struct.unpack('f', self.inStr[start:self.idx])[0]
+        return ret
 
     def getFloat64(self):
         start = self.idx
@@ -220,6 +228,14 @@ class parser:
             return
         outBox.insert(tk.END, self.getIndent() + 'Int64 {0} 0x{1:x}\n'.format(val, val))
 
+    def xFloat32(self, outBox):
+        self.idx += 1
+        val = self.getFloat32()
+        if val is None:
+            outBox.insert(tk.END, self.getIndent() + 'Float32 Truncated\n')
+            return
+        outBox.insert(tk.END, self.getIndent() + 'Float32 {}\n'.format(val))
+
     def xFloat64(self, outBox):
         self.idx += 1
         val = self.getFloat64()
@@ -317,8 +333,13 @@ class parser:
         self.table[0xc0] = self.xNil
         self.table[0xc2] = self.xFalse
         self.table[0xc3] = self.xTrue
+        #c4
         self.table[0xc5] = self.xStr16
+        #c6
         self.table[0xc7] = self.xExt8
+        #c8
+        #c9
+        self.table[0xca] = self.xFloat32
         self.table[0xcb] = self.xFloat64
         self.table[0xcc] = self.xInt8
         self.table[0xcd] = self.xInt16
@@ -328,6 +349,11 @@ class parser:
         self.table[0xd1] = self.xInt16
         self.table[0xd2] = self.xInt32
         self.table[0xd3] = self.xInt64
+        #d4
+        #d5
+        #d6
+        #d7
+        #d8
         self.table[0xd9] = self.xStr8
         self.table[0xda] = self.xStr16
         self.table[0xdb] = self.xStr32
