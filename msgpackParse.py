@@ -2,6 +2,7 @@ import sys
 import tkinter as tk
 import binascii
 import struct
+import base64
 
 class Names:
     str = ['Bin', 'Str']
@@ -403,8 +404,16 @@ def doStart():
     #print(y)
     p = parser(y)
     p.doStart(outbox)
+def doConvert():
+    x = inbox.get('1.0', 'end')
+    inbox.delete('1.0', tk.END)
+    y = base64.b64decode(x).hex()
+    inbox.insert(tk.END, y)
+    
 b1 = tk.Button(lpan, text='Parse', command=doStart)
 b1.pack(side=tk.LEFT)
+b2 = tk.Button(lpan, text='Convert Base64', command=doConvert)
+b2.pack(side=tk.LEFT)
 
 lpan.pack(side=tk.TOP, fill=tk.X)
 lf.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.YES)
